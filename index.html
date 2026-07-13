@@ -1746,6 +1746,7 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
   const [msg, setMsg]       = useState("");
   const [newPin, setNewPin] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [activeTab, setActiveTab] = useState("all"); // "all" | 반 이름
 
   // ── Firebase에서 전체 데이터 로드 ──────────────────────
   const load = async () => {
@@ -1798,7 +1799,11 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
     } catch(e) { setMsg("저장 실패: " + e.message); }
   };
 
-  const sorted = subs.slice().sort((a, b) => {
+  // 전체 반 목록 (중복 제거, 정렬)
+  const klassList = ["all", ...Array.from(new Set(subs.map(s => s.klass||"?"))).sort()];
+  // 탭 필터 적용
+  const filtered = activeTab === "all" ? subs : subs.filter(s => (s.klass||"?") === activeTab);
+  const sorted = filtered.slice().sort((a, b) => {
     const k = x => `${x.klass||""}`.padStart(3,"0") + `${x.num||""}`.padStart(3,"0");
     return k(a).localeCompare(k(b));
   });
@@ -1818,7 +1823,7 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
     },
       /*#__PURE__*/React.createElement("h2", {
         className:"jua", style:{ margin:0, color:"var(--ocean-d)", flex:"1 1 auto" }
-      }, "📋 학생 활동 결과 실시간 확인 (", subs.length, "명)"),
+      }, "📋 학생 활동 결과 실시간 확인 (", activeTab === "all" ? `전체 ${subs.length}명` : `${activeTab}반 ${sorted.length}명`, ")"),
       /*#__PURE__*/React.createElement("button", {
         className:"btn btn-ghost", style:{ fontSize:".78rem", padding:"5px 10px" },
         onClick: load
@@ -1834,7 +1839,7 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
       subs.length > 0 && /*#__PURE__*/React.createElement("button", {
         className:"btn btn-ghost", style:{ fontSize:".78rem", padding:"5px 10px" },
         onClick: () => downloadCSV(sorted)
-      }, "⬇️ CSV"),
+      }, activeTab === "all" ? "⬇️ CSV 전체" : `⬇️ CSV (${activeTab}반)`),
       subs.length > 0 && /*#__PURE__*/React.createElement("button", {
         className:"btn btn-ghost", style:{ fontSize:".78rem", padding:"5px 10px", color:"var(--coral)" },
         onClick: clearAll
@@ -1852,13 +1857,31 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
       loading && /*#__PURE__*/React.createElement("span", { style:{color:"var(--ink-soft)"} }, " 로딩 중...")
     ),
 
+    /* ── 반별 탭 ── */
+    subs.length > 0 && /*#__PURE__*/React.createElement("div", {
+      style: { display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }
+    },
+      klassList.map(k => /*#__PURE__*/React.createElement("button", {
+        key: k,
+        onClick: () => { setActiveTab(k); setOpen(null); },
+        style: {
+          padding: "5px 14px", borderRadius: 999, border: "none", cursor: "pointer",
+          fontFamily: "'Jua',sans-serif", fontSize: ".82rem",
+          background: activeTab === k ? "var(--ocean)" : "var(--paper-2)",
+          color: activeTab === k ? "#fff" : "var(--ink)",
+          fontWeight: activeTab === k ? 700 : 400
+        }
+      }, k === "all" ? `전체 (${subs.length}명)` : `${k}반 (${subs.filter(s=>(s.klass||"?")=== k).length}명)`)
+      )
+    ),
+
     /* ── 학생 없을 때 ── */
-    subs.length === 0 && !loading
+    filtered.length === 0 && !loading
       ? /*#__PURE__*/React.createElement("div", {
           style:{ padding:24, textAlign:"center", color:"var(--ink-soft)" }
         },
           /*#__PURE__*/React.createElement("div", { style:{fontSize:32, marginBottom:8} }, "⏳"),
-          /*#__PURE__*/React.createElement("p", null, "아직 제출한 학생이 없어요."),
+          /*#__PURE__*/React.createElement("p", null, activeTab === "all" ? "아직 제출한 학생이 없어요." : `${activeTab}반 학생이 없어요.`),
           /*#__PURE__*/React.createElement("p", { style:{fontSize:".84rem"} },
             "학생이 완료 화면에서 ", /*#__PURE__*/React.createElement("b", null, "'선생님께 제출하기'"),
             "를 누르면 여기에 실시간으로 나타나요."
@@ -2025,10 +2048,17 @@ function TeacherSubmissions({ quizTotal, blankTotal }) {
    메인 앱
    ========================================================= */
 function App() {
-  const [step, setStep] = useState("login"); // login → read → work → done
-  const [name, setName] = useState("");
-  const [klass, setKlass] = useState("");
-  const [num, setNum] = useState("");
+  // ── 자동저장 키 ──────────────────────────────────────
+  const SAVE_KEY = "oceania6:progress";
+  const loadProgress = () => {
+    try { return JSON.parse(localStorage.getItem(SAVE_KEY) || "{}"); } catch(e) { return {}; }
+  };
+  const saved = loadProgress();
+
+  const [step, setStep] = useState(saved.step && saved.step !== "login" ? saved.step : "login");
+  const [name, setName] = useState(saved.name || "");
+  const [klass, setKlass] = useState(saved.klass || "");
+  const [num, setNum] = useState(saved.num || "");
   const [teacher, setTeacher] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
@@ -2039,17 +2069,17 @@ function App() {
   const [subCode, setSubCode] = useState("");
 
   // 읽기
-  const [ri, setRi] = useState(0);
-  const [quizDone, setQuizDone] = useState({}); // idx -> true
+  const [ri, setRi] = useState(saved.ri || 0);
+  const [quizDone, setQuizDone] = useState(saved.quizDone || {}); // idx -> true
   const [pick, setPick] = useState(null);
 
   // 배움책
-  const [blanks, setBlanks] = useState({}); // "s-l-i" -> bool
+  const [blanks, setBlanks] = useState(saved.blanks || {}); // "s-l-i" -> bool
 
   // 생각쓰기
-  const [reflect2, setReflect2] = useState("");
-  const [reflect3side, setReflect3side] = useState("");
-  const [reflect3, setReflect3] = useState("");
+  const [reflect2, setReflect2] = useState(saved.reflect2 || "");
+  const [reflect3side, setReflect3side] = useState(saved.reflect3side || "");
+  const [reflect3, setReflect3] = useState(saved.reflect3 || "");
   const [modal, setModal] = useState({
     open: false
   });
@@ -2059,6 +2089,31 @@ function App() {
   const revealCount = blankVals.filter(b => b && b.ok && b.revealed).length;
   const pct = Math.round(doneCount / TOTAL_BLANKS * 100);
   const quizCount = Object.keys(quizDone).length;
+
+  // ── 자동저장 (상태 변경시 + 30초마다) ──────────────────
+  const saveProgress = React.useCallback(() => {
+    if (!name.trim()) return; // 이름 없으면 저장 안 함
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        step, name, klass, num, ri, quizDone, blanks,
+        reflect2, reflect3side, reflect3,
+        savedAt: new Date().toLocaleString("ko-KR")
+      }));
+    } catch(e) {}
+  }, [step, name, klass, num, ri, quizDone, blanks, reflect2, reflect3side, reflect3]);
+
+  React.useEffect(() => {
+    saveProgress();
+  }, [saveProgress]);
+
+  React.useEffect(() => {
+    const t = setInterval(saveProgress, 30000);
+    return () => clearInterval(t);
+  }, [saveProgress]);
+
+  const clearProgress = () => {
+    try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+  };
 
   // 학생 제출
   const submitWork = async () => {
@@ -2075,6 +2130,7 @@ function App() {
     setSubmitted(true);
     try {
       await fbPut(rec);
+      clearProgress(); // 제출 완료 후 임시저장 삭제
       setModal({ open: true, title: "제출 완료! 🎉", msg: "선생님 화면에 바로 전달됐어요!", tone: "good" });
     } catch(e) {
       // Firebase 실패 시 → 오프라인 코드로 안내
@@ -2094,6 +2150,7 @@ function App() {
 
   /* ---------- 로그인 ---------- */
   if (step === "login") {
+    const hasSaved = !!saved.name && !!saved.step && saved.step !== "login";
     return /*#__PURE__*/React.createElement("div", {
       style: {
         minHeight: "100vh",
@@ -2184,11 +2241,40 @@ function App() {
         borderRadius: 12,
         marginTop: 4
       }
-    })))), /*#__PURE__*/React.createElement("button", {
+    })))),
+    hasSaved && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 14, background: "#EAF4F7", borderRadius: 12,
+        padding: "12px 14px", border: "1.5px solid var(--ocean)"
+      }
+    },
+      /*#__PURE__*/React.createElement("div", {
+        className: "jua", style: { color: "var(--ocean-d)", fontSize: ".9rem", marginBottom: 4 }
+      }, "💾 저장된 진행 상황이 있어요!"),
+      /*#__PURE__*/React.createElement("div", {
+        style: { fontSize: ".82rem", color: "var(--ink-soft)", marginBottom: 8 }
+      }, saved.name, " · ", saved.klass, "반 · ", saved.savedAt, " 저장"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8 } },
+        /*#__PURE__*/React.createElement("button", {
+          className: "btn btn-primary",
+          style: { flex: 1, fontSize: ".88rem", padding: "8px" },
+          onClick: () => {
+            setName(saved.name || ""); setKlass(saved.klass || ""); setNum(saved.num || "");
+            setStep(saved.step || "read");
+          }
+        }, "이어서 계속하기 →"),
+        /*#__PURE__*/React.createElement("button", {
+          className: "btn btn-ghost",
+          style: { fontSize: ".82rem", padding: "8px 12px", color: "var(--coral)" },
+          onClick: () => { clearProgress(); window.location.reload(); }
+        }, "처음부터")
+      )
+    ),
+    /*#__PURE__*/React.createElement("button", {
       className: "btn btn-primary",
       style: {
         width: "100%",
-        marginTop: 20,
+        marginTop: 14,
         fontSize: "1.1rem",
         padding: "14px"
       },
@@ -2200,7 +2286,7 @@ function App() {
           tone: "coral"
         });
       }
-    }, "탐험 시작하기 →"), /*#__PURE__*/React.createElement("button", {
+    }, hasSaved ? "새로 시작하기" : "탐험 시작하기 →"), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-ghost",
       style: {
         marginTop: 10,
